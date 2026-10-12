@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Gwiezdny Czarodziej</title>
+<style>
+  html,body{margin:0;height:100%;background:#02030a;overflow:hidden;font-family:system-ui,sans-serif;color:#cfd8ff;touch-action:none;user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%}
+  #bloom{filter:blur(14px) saturate(1.6);mix-blend-mode:screen;opacity:.95}
+  #ui{position:fixed;left:0;right:0;bottom:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;z-index:5;padding:0 12px}
+  button{background:rgba(20,24,60,.45);border:1px solid rgba(160,180,255,.35);color:#dfe6ff;padding:10px 16px;border-radius:999px;font-size:15px;cursor:pointer;backdrop-filter:blur(8px);transition:.25s}
+  button.on{background:rgba(120,140,255,.45);box-shadow:0 0 22px rgba(130,150,255,.8);transform:translateY(-3px)}
+  #hint{position:fixed;top:22px;width:100%;text-align:center;z-index:5;letter-spacing:.3em;font-size:13px;text-transform:uppercase;opacity:.8;transition:opacity 1.5s;pointer-events:none;text-shadow:0 0 12px #7f8fff}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="bloom"></canvas>
+<div id="hint">Porusz różdżką · kliknij · przytrzymaj</div>
+<div id="ui"></div>
+<script>
+(() => {
+const c = document.getElementById('c'), x = c.getContext('2d');
+const b = document.getElementById('bloom'), bx = b.getContext('2d');
+let W, H, DPR;
+function resize(){
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = c.width = innerWidth * DPR; H = c.height = innerHeight * DPR;
+  b.width = W >> 2; b.height = H >> 2;
+  x.fillStyle = '#02030a'; x.fillRect(0, 0, W, H);
+}
+addEventListener('resize', resize); resize();
+
+// ---------- sound (pentatonic chimes) ----------
+let AC, master;
+const scale = [0, 2, 4, 7, 9];
+function audio(){
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = .35;
+  const d = AC.createDelay(); d.delayTime.value = .33;
+  const fb = AC.createGain(); fb.gain.value = .45;
+  d.connect(fb); fb.connect(d); master.connect(d); d.connect(AC.destination); master.connect(AC.destination);
+  // drone
+  [55, 82.4, 110.2].forEach(f => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = f; g.gain.value = .05; o.connect(g); g.connect(master); o.start();
+  });
+}
+function chime(n, vol = .25, dur = 2){
+  if (!AC) return;
+  const f = 220 * Math.pow(2, (scale[n % 5] + 12 * Math.floor(n / 5)) / 12);
+  const t = AC.currentTime;
+  [1, 2.01, 3.02].forEach((m, i) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = f * m;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol / (i + 1), t + .01);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur);
+  });
+}
+
+// ---------- world ----------
+const rnd = (a, b) => a + Math.random() * (b - a);
+const wand = {x: innerWidth / 2 * 1, y: innerHeight / 2, px: 0, py: 0, down: false, active: false, last: performance.now()};
+let mode = 0, hue = 200, t = 0, sinceMove = 0;
+const modes = ['✦ Pyłek gwiazd', '🌀 Wir', '💥 Nova', '✧ Konstelacje'];
+
+const N = 4500;
+const P = [];
+for (let i = 0; i < N; i++) P.push({x: rnd(0, innerWidth), y: rnd(0, innerHeight), vx: 0, vy: 0, h: rnd(180, 320), s: rnd(.6, 1.6), life: 1});
+
+const sparks = [];   // emitted particles
+const rings = [];    // shockwaves
+const stars = [];    // constellation nodes
+
+function field(px, py, tt){
+  const a = Math.sin(px * .0031 + tt * .21) + Math.cos(py * .0027 - tt * .17) + Math.sin((px + py) * .0019 + tt * .11);
+  return a * Math.PI;
+}
+function emit(n, x0, y0, speed, hh, spread = 6.28){
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * spread, s = Math.random() * speed;
+    sparks.push({x: x0, y: y0, vx: Math.cos(a) * s, vy: Math.sin(a) * s, h: hh + rnd(-30, 30), l: 1, d: rnd(.008, .02), s: rnd(.8, 2.6)});
+  }
+}
+function nova(px, py){
+  rings.push({x: px, y: py, r: 0, h: hue, l: 1});
+  emit(260, px, py, 14, hue);
+  chime((Math.random() * 10) | 0, .3, 3); chime((Math.random() * 5) | 0, .2, 4);
+}
+
+// ---------- input ----------
+function setPos(e){
+  const p = e.touches ? e.touches[0] : e;
+  wand.px = wand.x; wand.py = wand.y; wand.x = p.clientX; wand.y = p.clientY; wand.active = true; sinceMove = 0;
+}
+function down(e){
+  audio(); if (AC && AC.state === 'suspended') AC.resume();
+  setPos(e); wand.down = true;
+  document.getElementById('hint').style.opacity = 0;
+  if (mode === 2) nova(wand.x * DPR, wand.y * DPR);
+  if (mode === 3) addStar(wand.x * DPR, wand.y * DPR);
+  if (mode === 0){ emit(80, wand.x * DPR, wand.y * DPR, 8, hue); chime((Math.random() * 10) | 0, .2); }
+  e.preventDefault();
+}
+addEventListener('mousemove', e => { setPos(e); stepSound(); });
+addEventListener('touchmove', e => { setPos(e); stepSound(); e.preventDefault(); }, {passive: false});
+addEventListener('mousedown', down); addEventListener('touchstart', down, {passive: false});
+addEventListener('mouseup', () => wand.down = false); addEventListener('touchend', () => wand.down = false);
+addEventListener('dblclick', () => { for (let i = 0; i < 5; i++) setTimeout(() => nova(rnd(0, W), rnd(0, H)), i * 130); });
+addEventListener('keydown', e => { if (e.key >= '1' && e.key <= '4') setMode(+e.key - 1); });
+
+let acc = 0;
+function stepSound(){
+  const d = Math.hypot(wand.x - wand.px, wand.y - wand.py); acc += d;
+  if (acc > 140 && mode !== 1){ acc = 0; chime(Math.floor((wand.x / innerWidth) * 10), .08, 1.6); }
+}
+function addStar(px, py){
+  stars.push({x: px, y: py, born: t, h: hue});
+  if (stars.length > 14) stars.shift();
+  chime(Math.floor((1 - py / H) * 10), .3, 3);
+  emit(60, px, py, 5, hue);
+}
+
+// ---------- UI ----------
+const ui = document.getElementById('ui');
+modes.forEach((m, i) => {
+  const bt = document.createElement('button'); bt.textContent = m;
+  bt.onclick = ev => { ev.stopPropagation(); setMode(i); };
+  bt.addEventListener('mousedown', e => e.stopPropagation()); bt.addEventListener('touchstart', e => e.stopPropagation());
+  ui.appendChild(bt);
+});
+function setMode(i){ mode = i; [...ui.children].forEach((e, j) => e.classList.toggle('on', j === i)); }
+setMode(0);
+
+// ---------- loop ----------
+function frame(){
+  requestAnimationFrame(frame);
+  t += .016; sinceMove += .016; hue = (hue + .25) % 360;
+
+  // autopilot wand when idle
+  let wx = wand.x * DPR, wy = wand.y * DPR;
+  if (sinceMove > 3){
+    wx = W / 2 + Math.sin(t * .9) * W * .32 + Math.sin(t * 2.3) * W * .06;
+    wy = H / 2 + Math.sin(t * 1.3 + 1) * H * .3 + Math.cos(t * 3.1) * H * .05;
+    if (Math.random() < .004) nova(wx, wy);
+  }
+
+  // fade (trails)
+  x.globalCompositeOperation = 'source-over';
+  x.fillStyle = 'rgba(2,3,10,.14)'; x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'lighter';
+
+  const vortex = mode === 1 && (wand.down || sinceMove > 3);
+  const pull = wand.down || sinceMove > 3;
+
+  // ambient fireflies in a flow field
+  for (const p of P){
+    const a = field(p.x, p.y, t);
+    p.vx += Math.cos(a) * .12; p.vy += Math.sin(a) * .12;
+    const dx = wx - p.x, dy = wy - p.y, d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 1;
+    if (vortex){
+      const f = Math.min(900 * DPR * DPR / d2 * 40, 2.2);
+      p.vx += dx / d * f * .6 - dy / d * f * 1.1; p.vy += dy / d * f * .6 + dx / d * f * 1.1;
+    } else if (pull && d < 380 * DPR){
+      p.vx += dx / d * .5; p.vy += dy / d * .5;
+    } else if (d < 160 * DPR){
+      p.vx -= dx / d * .9; p.vy -= dy / d * .9; p.h += 3;
+    }
+    p.vx *= .93; p.vy *= .93;
+    p.x += p.vx * DPR; p.y += p.vy * DPR;
+    if (p.x < 0) p.x += W; if (p.x > W) p.x -= W; if (p.y < 0) p.y += H; if (p.y > H) p.y -= H;
+    const sp = Math.min(Math.hypot(p.vx, p.vy) / 4, 1);
+    x.fillStyle = `hsla(${(p.h + hue * .5) % 360},90%,${55 + sp * 30}%,${.25 + sp * .6})`;
+    const s = p.s * DPR * (1 + sp);
+    x.fillRect(p.x, p.y, s, s);
+  }
+
+  // wand trail
+  if (sinceMove < 3){
+    const sp = Math.hypot(wand.x - wand.px, wand.y - wand.py);
+    if (mode === 0 || mode === 3) emit(Math.min(2 + sp * .5, 14) | 0, wx, wy, 3 + sp * .15, hue);
+    if (wand.down && mode === 0) emit(6, wx, wy, 6, hue + 60);
+  } else if (mode === 0) emit(3, wx, wy, 3, hue);
+  // wand glow
+  const g = x.createRadialGradient(wx, wy, 0, wx, wy, 60 * DPR);
+  g.addColorStop(0, `hsla(${hue},100%,85%,.9)`); g.addColorStop(.2, `hsla(${hue},100%,60%,.35)`); g.addColorStop(1, 'transparent');
+  x.fillStyle = g; x.fillRect(wx - 70 * DPR, wy - 70 * DPR, 140 * DPR, 140 * DPR);
+
+  // sparks
+  for (let i = sparks.length - 1; i >= 0; i--){
+    const s = sparks[i];
+    s.x += s.vx * DPR; s.y += s.vy * DPR; s.vx *= .96; s.vy = s.vy * .96 + .02; s.l -= s.d;
+    if (s.l <= 0){ sparks.splice(i, 1); continue; }
+    x.fillStyle = `hsla(${s.h},100%,${60 + s.l * 25}%,${s.l})`;
+    const z = s.s * DPR * (1 + s.l); x.fillRect(s.x - z / 2, s.y - z / 2, z, z);
+  }
+  if (sparks.length > 6000) sparks.splice(0, sparks.length - 6000);
+
+  // rings
+  for (let i = rings.length - 1; i >= 0; i--){
+    const r = rings[i]; r.r += 14 * DPR * r.l + 2; r.l -= .012;
+    if (r.l <= 0){ rings.splice(i, 1); continue; }
+    x.strokeStyle = `hsla(${r.h},100%,70%,${r.l})`; x.lineWidth = 3 * DPR * r.l;
+    x.beginPath(); x.arc(r.x, r.y, r.r, 0, 6.283); x.stroke();
+    x.strokeStyle = `hsla(${r.h + 80},100%,70%,${r.l * .5})`;
+    x.beginPath(); x.arc(r.x, r.y, r.r * .8, 0, 6.283); x.stroke();
+    // push fireflies outward
+    for (const p of P){
+      const dx = p.x - r.x, dy = p.y - r.y, d = Math.hypot(dx, dy);
+      if (Math.abs(d - r.r) < 30 * DPR){ p.vx += dx / d * 2.5; p.vy += dy / d * 2.5; }
+    }
+  }
+
+  // constellations
+  if (stars.length){
+    x.lineWidth = 1.2 * DPR;
+    for (let i = 0; i < stars.length; i++){
+      const s = stars[i], tw = .6 + .4 * Math.sin(t * 4 + i);
+      for (let j = i + 1; j < stars.length; j++){
+        const o = stars[j], d = Math.hypot(s.x - o.x, s.y - o.y);
+        if (d < 450 * DPR){
+          x.strokeStyle = `hsla(${s.h},100%,75%,${(1 - d / (450 * DPR)) * .7 * tw})`;
+          x.beginPath(); x.moveTo(s.x, s.y); x.lineTo(o.x, o.y); x.stroke();
+        }
+      }
+      const r = (10 + 6 * tw) * DPR;
+      const gg = x.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 2.5);
+      gg.addColorStop(0, `hsla(${s.h},100%,92%,1)`); gg.addColorStop(.3, `hsla(${s.h},100%,65%,.4)`); gg.addColorStop(1, 'transparent');
+      x.fillStyle = gg; x.fillRect(s.x - r * 2.5, s.y - r * 2.5, r * 5, r * 5);
+      x.strokeStyle = `hsla(${s.h},100%,90%,.8)`;
+      x.beginPath(); x.moveTo(s.x - r * 1.6, s.y); x.lineTo(s.x + r * 1.6, s.y); x.moveTo(s.x, s.y - r * 1.6); x.lineTo(s.x, s.y + r * 1.6); x.stroke();
+    }
+  }
+
+  // bloom pass
+  bx.globalCompositeOperation = 'source-over';
+  bx.clearRect(0, 0, b.width, b.height);
+  bx.drawImage(c, 0, 0, b.width, b.height);
+}
+frame();
+})();
+</script>
+</body>
+</html>
