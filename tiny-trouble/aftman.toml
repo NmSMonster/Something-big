@@ -1,0 +1,7 @@
+# Toolchain for Tiny Trouble (install with `aftman install`).
+# Rokit users: see rokit.toml (same pins).
+[tools]
+rojo = "rojo-rbx/rojo@7.4.4"
+selene = "Kampfkarren/selene@0.30.0"
+stylua = "JohnnyMorganz/StyLua@2.6.0"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.52.0"

@@ -1,0 +1,7 @@
+std = "roblox"
+
+[lints]
+# `script`/`workspace` style globals are declared by the roblox std.
+global_usage = "allow"
+shadowing = "warn"
+unused_variable = "warn"

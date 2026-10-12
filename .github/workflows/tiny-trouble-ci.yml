@@ -1,0 +1,49 @@
+name: Tiny Trouble CI
+
+on:
+  push:
+    paths:
+      - "tiny-trouble/**"
+      - ".github/workflows/tiny-trouble-ci.yml"
+  pull_request:
+    paths:
+      - "tiny-trouble/**"
+      - ".github/workflows/tiny-trouble-ci.yml"
+
+jobs:
+  check:
+    name: Build, type-check, lint, format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tiny-trouble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (aftman)
+        uses: ok-nick/setup-aftman@v0.4.2
+        with:
+          path: tiny-trouble
+
+      - name: Rojo build
+        run: |
+          rojo build default.project.json -o build/TinyTrouble.rbxlx
+          rojo sourcemap default.project.json -o sourcemap.json
+
+      - name: Luau type check
+        run: |
+          VERSION="$(grep -oE 'luau-lsp@[0-9.]+' aftman.toml | head -1 | cut -d@ -f2)"
+          curl -fsSL "https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/$VERSION/scripts/globalTypes.None.d.luau" -o globalTypes.d.luau
+          luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau src
+
+      - name: Selene lint
+        run: selene src
+
+      - name: StyLua format check
+        run: stylua --check src
+
+      - name: Upload place file
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinyTrouble-place
+          path: tiny-trouble/build/TinyTrouble.rbxlx

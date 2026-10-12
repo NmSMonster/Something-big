@@ -1,0 +1,88 @@
+{
+  "name": "TinyTrouble",
+  "globIgnorePaths": ["**/.git/**", "**/*.md"],
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "$path": "src/first"
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$properties": {
+        "AutoJumpEnabled": false,
+        "CameraMaxZoomDistance": 60,
+        "CameraMinZoomDistance": 4,
+        "CharacterWalkSpeed": 18,
+        "CharacterJumpPower": 50,
+        "CharacterUseJumpPower": true,
+        "EnableMouseLockOption": false,
+        "LoadCharacterAppearance": true
+      },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": {
+          "$path": "src/client"
+        }
+      },
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts"
+      }
+    },
+
+    "StarterGui": {
+      "$className": "StarterGui",
+      "$properties": {
+        "ResetPlayerGuiOnSpawn": false,
+        "ShowDevelopmentGui": true
+      }
+    },
+
+    "Players": {
+      "$className": "Players",
+      "$properties": {
+        "CharacterAutoLoads": true,
+        "RespawnTime": 4
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "Gravity": 196.2,
+        "StreamingEnabled": false
+      }
+    },
+
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": "ShadowMap",
+        "GlobalShadows": true
+      }
+    },
+
+    "SoundService": {
+      "$className": "SoundService",
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}

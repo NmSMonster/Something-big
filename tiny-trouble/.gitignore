@@ -1,0 +1,23 @@
+# Rojo build output
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+!/assets/**/*.rbxm
+
+# Rojo / tooling
+sourcemap.json
+roblox.yml
+/build/
+/.rojo/
+
+# Editors / OS
+.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tool caches
+/.aftman/
+/.rokit/
+.luau-types/
